@@ -2,6 +2,7 @@ const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const crypto = require("crypto");
 
 dotenv.config();
 
@@ -27,7 +28,75 @@ db.connect((err) => {
   console.log("✅ Conectado a MySQL correctamente");
 });
 
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(password, salt, 32).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  if (!stored || !stored.includes(":")) return false;
+  const [salt, hash] = stored.split(":");
+  const next = crypto.scryptSync(password, salt, 32);
+  const storedBuf = Buffer.from(hash, "hex");
+  if (storedBuf.length !== next.length) return false;
+  return crypto.timingSafeEqual(storedBuf, next);
+}
+
 // ==================== RUTAS ====================
+
+app.post("/register", (req, res) => {
+  const username = String(req.body.username || "").trim();
+  const password = String(req.body.password || "");
+
+  if (!username || !password) {
+    return res.status(400).json({ error: "Usuario y contraseña son obligatorios" });
+  }
+  if (username.length > 50) {
+    return res.status(400).json({ error: "El usuario no puede tener más de 50 caracteres" });
+  }
+
+  const passwordHash = hashPassword(password);
+  db.query(
+    "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+    [username, passwordHash],
+    (err, result) => {
+      if (err) {
+        if (err.code === "ER_DUP_ENTRY") {
+          return res.status(409).json({ error: "Este usuario ya existe" });
+        }
+        console.error(err);
+        return res.status(500).json({ error: "No se pudo crear el usuario" });
+      }
+      res.status(201).json({ id: result.insertId, username });
+    },
+  );
+});
+
+app.post("/login", (req, res) => {
+  const username = String(req.body.username || "").trim();
+  const password = String(req.body.password || "");
+
+  if (!username || !password) {
+    return res.status(400).json({ error: "Usuario y contraseña son obligatorios" });
+  }
+
+  db.query(
+    "SELECT id, username, password_hash FROM users WHERE username = ? LIMIT 1",
+    [username],
+    (err, rows) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ error: "No se pudo iniciar sesión" });
+      }
+      const user = rows[0];
+      if (!user || !verifyPassword(password, user.password_hash)) {
+        return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
+      }
+      res.json({ id: user.id, username: user.username });
+    },
+  );
+});
 
 // Guardar progreso al terminar nivel
 app.post("/save-progress", (req, res) => {

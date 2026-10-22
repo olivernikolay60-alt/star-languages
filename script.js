@@ -35,6 +35,36 @@ function crearNubes() {
 }
 
 // ==================== LOGIN Y REGISTRO ====================
+const API_URL = "http://127.0.0.1:4000";
+
+async function sincronizarUsuariosLocales() {
+  const raw = localStorage.getItem("usuarios");
+  if (!raw) return;
+  let usuarios = [];
+  try {
+    usuarios = JSON.parse(raw) || [];
+  } catch {
+    return;
+  }
+
+  let todosGuardados = true;
+  for (const cuenta of usuarios) {
+    if (!cuenta.user || !cuenta.pass) continue;
+    try {
+      const res = await fetch(`${API_URL}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: cuenta.user, password: cuenta.pass }),
+      });
+      if (!res.ok && res.status !== 409) todosGuardados = false;
+    } catch {
+      todosGuardados = false;
+    }
+  }
+  if (todosGuardados) localStorage.removeItem("usuarios");
+}
+
+sincronizarUsuariosLocales();
 function mostrarLogin() {
   document.getElementById("loginOverlay").style.display = "flex";
   document.getElementById("registroOverlay").style.display = "none";
@@ -50,39 +80,76 @@ function cerrarOverlays() {
   document.getElementById("registroOverlay").style.display = "none";
 }
 
-function registrar() {
+function mostrarAbout() {
+  document.getElementById("aboutOverlay").style.display = "flex";
+}
+
+function cerrarAbout() {
+  document.getElementById("aboutOverlay").style.display = "none";
+}
+
+async function registrar() {
   let user = document.getElementById("regUser").value.trim();
-  let pass = document.getElementById("regPass").value.trim();
+  let pass = document.getElementById("regPass").value;
   if (!user || !pass) {
     alert("Por favor completa usuario y contraseña");
     return;
   }
-  let usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
-  if (usuarios.some((u) => u.user === user)) {
-    alert("Este usuario ya existe. Elige otro nombre.");
-    return;
+
+  try {
+    const res = await fetch(`${API_URL}/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: user, password: pass }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 409) {
+      alert("Este usuario ya existe. Elige otro nombre.");
+      return;
+    }
+    if (!res.ok) {
+      alert(data.error || "No se pudo crear la cuenta");
+      return;
+    }
+    localStorage.setItem(
+      "usuarioActual",
+      JSON.stringify({ id: data.id, username: data.username }),
+    );
+    alert("¡Cuenta creada correctamente! Bienvenido a Star Languages 🚀");
+    cerrarOverlays();
+    mostrarLogin();
+  } catch {
+    alert("No se pudo conectar con la base de datos. Revisa que el servidor esté encendido.");
   }
-  usuarios.push({ user, pass });
-  localStorage.setItem("usuarios", JSON.stringify(usuarios));
-  alert("¡Cuenta creada correctamente! Bienvenido a Star Languages 🚀");
-  cerrarOverlays();
-  mostrarLogin();
 }
 
-function entrar() {
+async function entrar() {
   let user = document.getElementById("loginUser").value.trim();
-  let pass = document.getElementById("loginPass").value.trim();
+  let pass = document.getElementById("loginPass").value;
   if (!user || !pass) {
     alert("Por favor ingresa usuario y contraseña");
     return;
   }
-  let usuarios = JSON.parse(localStorage.getItem("usuarios")) || [];
-  let valido = usuarios.find((u) => u.user === user && u.pass === pass);
-  if (valido) {
-    alert("¡Bienvenido de nuevo, " + user + "! 🌟");
+
+  try {
+    const res = await fetch(`${API_URL}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: user, password: pass }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || "Usuario o contraseña incorrectos");
+      return;
+    }
+    localStorage.setItem(
+      "usuarioActual",
+      JSON.stringify({ id: data.id, username: data.username }),
+    );
+    alert("¡Bienvenido de nuevo, " + data.username + "! 🌟");
     cerrarOverlays();
-  } else {
-    alert("Usuario o contraseña incorrectos");
+  } catch {
+    alert("No se pudo conectar con la base de datos. Revisa que el servidor esté encendido.");
   }
 }
 
@@ -213,11 +280,26 @@ function mostrarResultadoTest() {
           ? "B1"
           : "B2";
   localStorage.setItem("nivelUsuario", nivel);
+
+  const idx = MODULOS.indexOf(nivel);
+  const inferiores = MODULOS.slice(0, idx);
+  const siguiente = MODULOS[idx + 1];
+  const bloqueados = inferiores.length
+    ? `<p class="test-result-note">🔒 ${inferiores.join(", ")} ${inferiores.length > 1 ? "quedan bloqueados" : "queda bloqueado"} porque ya ${inferiores.length > 1 ? "los dominas" : "lo dominas"}.</p>`
+    : "";
+  const desbloqueo = siguiente
+    ? `<p class="test-result-note">Completa los 10 niveles de <strong>${nivel}</strong> para desbloquear <strong>${siguiente}</strong>.</p>`
+    : "";
+
   document.getElementById("contenidoPantalla").innerHTML = `
         <h2>¡TEST COMPLETADO! 🎉</h2>
         <p style="font-size:24px; margin:25px 0;">Correctas: <strong>${respuestasCorrectas}/20</strong></p>
         <p style="font-size:28px; color:#e8c547;">Tu nivel es: <strong>${nivel}</strong></p>
-        <button onclick="reiniciarTest()" style="padding:18px 50px; font-size:15px;">HACER TEST DE NUEVO</button>
+        <p class="test-result-note">Empiezas el juego en el módulo <strong>${nivel}</strong>.</p>
+        ${bloqueados}
+        ${desbloqueo}
+        <button onclick="abrirPantalla('game')" style="padding:18px 50px; font-size:15px;">IR AL JUEGO 🎮</button>
+        <button onclick="reiniciarTest()" class="btn-secundario" style="padding:18px 50px; font-size:15px;">HACER TEST DE NUEVO</button>
     `;
 }
 
@@ -621,8 +703,94 @@ function getProgress() {
 
 function saveProgress(mod, level) {
   let prog = getProgress();
+  if (!prog[mod]) prog[mod] = [];
   if (!prog[mod].includes(level)) prog[mod].push(level);
   localStorage.setItem("starLanguagesProgress", JSON.stringify(prog));
+}
+
+const MODULOS = ["A1", "A2", "B1", "B2", "C1"];
+const NIVELES_POR_MODULO = 10;
+
+function getNivelTest() {
+  const nivel = localStorage.getItem("nivelUsuario");
+  return MODULOS.includes(nivel) ? nivel : null;
+}
+
+function nivelesCompletados(mod, prog = getProgress()) {
+  return (prog[mod] || []).filter((n) => n >= 1 && n <= NIVELES_POR_MODULO).length;
+}
+
+function moduloCompleto(mod, prog = getProgress()) {
+  return nivelesCompletados(mod, prog) >= NIVELES_POR_MODULO;
+}
+
+/**
+ * The placement test sets the starting module. Modules below it are locked
+ * (already known); each module above it needs the previous one fully completed.
+ */
+function estadoModulo(mod) {
+  const prog = getProgress();
+  const inicio = MODULOS.indexOf(getNivelTest() || "A1");
+  const idx = MODULOS.indexOf(mod);
+
+  if (idx < inicio) return { desbloqueado: false, motivo: "inferior" };
+  for (let i = inicio; i < idx; i++) {
+    if (!moduloCompleto(MODULOS[i], prog)) {
+      return { desbloqueado: false, motivo: "pendiente", pendiente: MODULOS[i] };
+    }
+  }
+  return {
+    desbloqueado: true,
+    completados: nivelesCompletados(mod, prog),
+    completo: moduloCompleto(mod, prog),
+  };
+}
+
+function mensajeModuloBloqueado(mod) {
+  const estado = estadoModulo(mod);
+  if (estado.motivo === "inferior") {
+    return `${mod} está bloqueado: según tu test ya dominas este nivel. Sigue mejorando en ${getNivelTest()}.`;
+  }
+  return `${mod} está bloqueado. Completa los ${NIVELES_POR_MODULO} niveles de ${estado.pendiente} primero.`;
+}
+
+function avisoModuloBloqueado(mod) {
+  alert(mensajeModuloBloqueado(mod));
+}
+
+function renderSelectorModulos() {
+  const nivelTest = getNivelTest();
+  const banner = nivelTest
+    ? `<div class="placement-banner">Tu nivel según el test: <strong>${nivelTest}</strong></div>`
+    : `<div class="placement-banner">¿Ya sabes inglés? Haz el <strong>TEST</strong> para empezar en tu nivel y no repetir lo que ya sabes.
+         <button type="button" class="placement-test-btn" onclick="abrirPantalla('test')">HACER TEST</button>
+       </div>`;
+
+  const cards = MODULOS.map((mod) => {
+    const estado = estadoModulo(mod);
+    if (!estado.desbloqueado) {
+      const estadoTexto =
+        estado.motivo === "inferior" ? "Ya lo dominas" : `Completa ${estado.pendiente}`;
+      return `<div class="modulo-card locked" onclick="avisoModuloBloqueado('${mod}')">
+                <span>🔒 ${mod}</span>
+                <span class="modulo-status">${estadoTexto}</span>
+              </div>`;
+    }
+    const estadoTexto = estado.completo
+      ? "✓ Completado"
+      : `${estado.completados}/${NIVELES_POR_MODULO} niveles`;
+    return `<div class="modulo-card${estado.completo ? " complete" : ""}" onclick="seleccionarModulo('${mod}')">
+              <span>${mod}</span>
+              <span class="modulo-status">${estadoTexto}</span>
+            </div>`;
+  }).join("");
+
+  return `
+    ${banner}
+    <div style="margin-bottom:30px; font-size:22px;">Elige tu módulo de inglés</div>
+    <div class="modulo-grid">${cards}</div>
+    <button onclick="cerrarPantalla()" style="margin-top:40px; padding:14px 50px;">VOLVER AL MENÚ</button>
+  `;
 }
 
 // ==================== FEEDBACK BONITO ====================
@@ -657,7 +825,35 @@ let gameCanvas,
   particles = [],
   levelCompleted = false,
   hazardCooldown = 0,
-  worldWidth = 3200;
+  worldWidth = 3200,
+  respuestasNivel = [];
+
+function textoRespuestaUsuario(pregunta, respuestaUsuario) {
+  if (pregunta.type === "input") {
+    return String(respuestaUsuario || "").trim() || "(empty)";
+  }
+  const idx = Number(respuestaUsuario);
+  return pregunta.options && pregunta.options[idx] != null
+    ? pregunta.options[idx]
+    : String(respuestaUsuario);
+}
+
+function registrarRespuestaNivel(pregunta, respuestaUsuario, esCorrecta) {
+  respuestasNivel.push({
+    question: pregunta.q,
+    yourAnswer: textoRespuestaUsuario(pregunta, respuestaUsuario),
+    correctAnswer: obtenerTextoCorrecto(pregunta),
+    correct: esCorrecta,
+  });
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 function normalizarTexto(texto) {
   return texto.trim().toLowerCase().replace(/\s+/g, " ");
@@ -706,17 +902,7 @@ function abrirPantalla(tipo) {
   }
   if (tipo === "game") {
     titulo = "🎮 SELECT MÓDULO";
-    contenido = `
-            <div style="margin-bottom:40px; font-size:22px;">Elige tu módulo de inglés</div>
-            <div class="modulo-grid">
-                <div class="modulo-card" onclick="seleccionarModulo('A1')">A1</div>
-                <div class="modulo-card" onclick="seleccionarModulo('A2')">A2</div>
-                <div class="modulo-card" onclick="seleccionarModulo('B1')">B1</div>
-                <div class="modulo-card" onclick="seleccionarModulo('B2')">B2</div>
-                <div class="modulo-card" onclick="seleccionarModulo('C1')">C1</div>
-            </div>
-            <button onclick="cerrarPantalla()" style="margin-top:40px; padding:14px 50px;">VOLVER AL MENÚ</button>
-        `;
+    contenido = renderSelectorModulos();
   }
 
   document.getElementById("tituloPantalla").innerHTML = titulo;
@@ -732,8 +918,13 @@ function cerrarPantalla() {
 }
 
 function seleccionarModulo(modulo) {
+  if (!estadoModulo(modulo).desbloqueado) {
+    avisoModuloBloqueado(modulo);
+    return;
+  }
   moduloActual = modulo;
   const prog = getProgress();
+  if (!prog[modulo]) prog[modulo] = [];
   let html = `<h2 style="margin-bottom:20px; color:#e8c547;">MÓDULO ${modulo} - MAPA DE NIVELES</h2>
                 <div class="level-map"><div class="mountain-bg"></div><div class="level-grid">`;
   for (let i = 1; i <= 10; i++) {
@@ -746,6 +937,10 @@ function seleccionarModulo(modulo) {
 }
 
 function iniciarNivel(modulo, numero) {
+  if (!estadoModulo(modulo).desbloqueado) {
+    avisoModuloBloqueado(modulo);
+    return;
+  }
   moduloActual = modulo;
   numeroActual = numero;
   cerrarPantalla();
@@ -766,10 +961,18 @@ function cerrarFinDeNivel() {
 
 function mostrarFinDeNivel(starsEarned) {
   cerrarFinDeNivel();
-  currentQuestion = true; // pause gameplay
+  currentQuestion = true;
   keys = {};
 
-  const hasNext = numeroActual < 10;
+  const total = respuestasNivel.length;
+  const correctCount = respuestasNivel.filter((r) => r.correct).length;
+  const mistakes = respuestasNivel.filter((r) => !r.correct);
+  const hasNext = numeroActual < NIVELES_POR_MODULO;
+  const siguienteModulo = MODULOS[MODULOS.indexOf(moduloActual) + 1];
+  const moduloTerminado = moduloCompleto(moduloActual);
+  const puedeSiguienteModulo =
+    !hasNext && siguienteModulo && estadoModulo(siguienteModulo).desbloqueado;
+
   const div = document.createElement("div");
   div.id = "levelEndOverlay";
   div.className = "question-overlay level-end-overlay";
@@ -777,15 +980,37 @@ function mostrarFinDeNivel(starsEarned) {
     <span class="question-badge">${moduloActual} · Level ${numeroActual}</span>
     <h2 class="level-end-title">LEVEL COMPLETE!</h2>
     <p class="level-end-stars">${"⭐".repeat(starsEarned)}</p>
-    <p class="level-end-sub">Great job — choose what to do next</p>
+    <p class="level-end-score">You got <strong>${correctCount}</strong> of <strong>${total}</strong> right</p>
+    <p class="level-end-sub">${
+      mistakes.length === 0
+        ? "Perfect! No mistakes this level."
+        : `Mistakes: ${mistakes.length} — review them below`
+    }</p>
+    ${
+      moduloTerminado && !hasNext
+        ? `<p class="level-end-unlock">${
+            siguienteModulo
+              ? `🔓 Module ${moduloActual} complete! ${siguienteModulo} is now unlocked.`
+              : `🏆 You completed every module!`
+          }</p>`
+        : ""
+    }
     <div class="level-end-actions">
       ${
         hasNext
           ? `<button type="button" class="question-submit" id="btnNextLevel">NEXT LEVEL</button>`
-          : `<button type="button" class="question-submit" id="btnModuleMap">MODULE MAP</button>`
+          : puedeSiguienteModulo
+            ? `<button type="button" class="question-submit" id="btnNextModule">NEXT MODULE: ${siguienteModulo}</button>`
+            : `<button type="button" class="question-submit" id="btnModuleMap">MODULE MAP</button>`
       }
       <button type="button" class="btn-home" id="btnHomeScreen">BACK TO HOME SCREEN</button>
+      ${
+        mistakes.length > 0
+          ? `<button type="button" class="btn-show-mistakes" id="btnShowMistakes">SHOW MISTAKES</button>`
+          : ""
+      }
     </div>
+    <div id="mistakesPanel" class="mistakes-panel" hidden></div>
   `;
   document.body.appendChild(div);
 
@@ -795,6 +1020,15 @@ function mostrarFinDeNivel(starsEarned) {
       cerrarFinDeNivel();
       currentQuestion = false;
       iniciarNivel(moduloActual, numeroActual + 1);
+    });
+  }
+
+  const nextModuleBtn = document.getElementById("btnNextModule");
+  if (nextModuleBtn) {
+    nextModuleBtn.addEventListener("click", () => {
+      salirDelJuego();
+      abrirPantalla("game");
+      seleccionarModulo(siguienteModulo);
     });
   }
 
@@ -812,6 +1046,32 @@ function mostrarFinDeNivel(starsEarned) {
     cerrarPantalla();
     cerrarOverlays();
   });
+
+  const showBtn = document.getElementById("btnShowMistakes");
+  if (showBtn) {
+    showBtn.addEventListener("click", () => {
+      const panel = document.getElementById("mistakesPanel");
+      const isHidden = panel.hasAttribute("hidden");
+      if (isHidden) {
+        panel.innerHTML = mistakes
+          .map(
+            (m, i) => `
+          <div class="mistake-card">
+            <p class="mistake-q"><span class="mistake-num">${i + 1}.</span> ${escapeHtml(m.question)}</p>
+            <p class="mistake-wrong">Your answer: <strong>${escapeHtml(m.yourAnswer)}</strong></p>
+            <p class="mistake-fix">Correction: <strong>${escapeHtml(m.correctAnswer)}</strong></p>
+          </div>`,
+          )
+          .join("");
+        panel.removeAttribute("hidden");
+        showBtn.textContent = "HIDE MISTAKES";
+      } else {
+        panel.setAttribute("hidden", "");
+        panel.innerHTML = "";
+        showBtn.textContent = "SHOW MISTAKES";
+      }
+    });
+  }
 }
 
 // ==================== MINI JUEGO ====================
@@ -823,9 +1083,9 @@ function iniciarMiniJuego(modulo, numero) {
 
   player = {
     x: 120,
-    y: 480,
-    width: 52,
-    height: 52,
+    y: 470,
+    width: 64,
+    height: 56,
     vx: 0,
     vy: 0,
     jumping: false,
@@ -837,6 +1097,7 @@ function iniciarMiniJuego(modulo, numero) {
   particles = [];
   levelCompleted = false;
   hazardCooldown = 0;
+  respuestasNivel = [];
 
   const mapa = generarMapaNivel(modulo, numero);
   plataformas = mapa.plataformas;
@@ -933,30 +1194,168 @@ function iniciarMiniJuego(modulo, numero) {
     const px = player.x - cameraX;
     const py = player.y;
     const facing = player.vx < 0 ? -1 : 1;
-    const bob = Math.abs(player.vx) > 0 ? Math.sin(gameTime * 0.3) * 2 : 0;
+    const moving = Math.abs(player.vx) > 0;
+    const bob = moving ? Math.sin(gameTime * 0.35) * 2 : 0;
+    const legSwing = moving ? Math.sin(gameTime * 0.4) * 4 : 0;
 
     ctx.save();
-    ctx.translate(px + player.width / 2, py + bob);
+    ctx.translate(px + player.width / 2, py + player.height / 2 + bob);
     ctx.scale(facing, 1);
-    ctx.translate(-player.width / 2, 0);
 
-    ctx.fillStyle = "#c8c8d0";
-    ctx.fillRect(4, 10, 44, 36);
-    ctx.fillStyle = "#9a9aaa";
-    ctx.fillRect(8, 0, 14, 14);
-    ctx.fillRect(30, 0, 14, 14);
-    ctx.fillStyle = "#2a2a35";
-    ctx.fillRect(14, 22, 20, 14);
-    ctx.fillStyle = "#111";
-    ctx.fillRect(16, 18, 7, 7);
-    ctx.fillRect(30, 18, 7, 7);
+    // Soft shadow
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.beginPath();
+    ctx.ellipse(0, 26, 22, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail (bushy, curved)
+    ctx.fillStyle = "#9aa0ae";
+    ctx.beginPath();
+    ctx.moveTo(-22, 2);
+    ctx.quadraticCurveTo(-42, -8 + legSwing * 0.3, -38, 10);
+    ctx.quadraticCurveTo(-34, 18, -20, 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#c5c9d4";
+    ctx.beginPath();
+    ctx.moveTo(-24, 4);
+    ctx.quadraticCurveTo(-36, -2, -34, 8);
+    ctx.quadraticCurveTo(-30, 12, -22, 8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Back legs
+    ctx.fillStyle = "#8b91a0";
+    ctx.beginPath();
+    ctx.roundRect(-16, 8 - legSwing * 0.4, 9, 18, 3);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.roundRect(4, 8 + legSwing * 0.4, 9, 18, 3);
+    ctx.fill();
+    ctx.fillStyle = "#6e7484";
+    ctx.beginPath();
+    ctx.ellipse(-11, 25 - legSwing * 0.4, 6, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(9, 25 + legSwing * 0.4, 6, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body
+    const bodyGrad = ctx.createLinearGradient(0, -12, 0, 16);
+    bodyGrad.addColorStop(0, "#d0d4de");
+    bodyGrad.addColorStop(1, "#8f96a6");
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.ellipse(-2, 2, 22, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Chest fur
+    ctx.fillStyle = "#e8ebf2";
+    ctx.beginPath();
+    ctx.ellipse(6, 6, 10, 8, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Front legs
+    ctx.fillStyle = "#8b91a0";
+    ctx.beginPath();
+    ctx.roundRect(8, 6 + legSwing * 0.5, 8, 18, 3);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.roundRect(18, 6 - legSwing * 0.5, 8, 18, 3);
+    ctx.fill();
+    ctx.fillStyle = "#6e7484";
+    ctx.beginPath();
+    ctx.ellipse(12, 24 + legSwing * 0.5, 5.5, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(22, 24 - legSwing * 0.5, 5.5, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Neck
+    ctx.fillStyle = "#b8becb";
+    ctx.beginPath();
+    ctx.ellipse(16, -4, 9, 8, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head
+    const headGrad = ctx.createLinearGradient(14, -22, 28, 2);
+    headGrad.addColorStop(0, "#e2e5ed");
+    headGrad.addColorStop(1, "#9aa1b0");
+    ctx.fillStyle = headGrad;
+    ctx.beginPath();
+    ctx.ellipse(20, -8, 14, 12, 0.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pointed ears
+    ctx.fillStyle = "#a8aebc";
+    ctx.beginPath();
+    ctx.moveTo(10, -16);
+    ctx.lineTo(6, -30);
+    ctx.lineTo(16, -20);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(24, -18);
+    ctx.lineTo(28, -32);
+    ctx.lineTo(34, -16);
+    ctx.closePath();
+    ctx.fill();
+    // Inner ear
+    ctx.fillStyle = "#d48a9a";
+    ctx.beginPath();
+    ctx.moveTo(11, -18);
+    ctx.lineTo(9, -26);
+    ctx.lineTo(14, -20);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(26, -19);
+    ctx.lineTo(28, -27);
+    ctx.lineTo(31, -18);
+    ctx.closePath();
+    ctx.fill();
+
+    // Snout
+    ctx.fillStyle = "#dfe3ec";
+    ctx.beginPath();
+    ctx.ellipse(32, -4, 10, 7, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    // Nose
+    ctx.fillStyle = "#1a1a22";
+    ctx.beginPath();
+    ctx.ellipse(40, -5, 3.5, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Mouth
+    ctx.strokeStyle = "#4a4e5a";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(36, -1);
+    ctx.quadraticCurveTo(33, 3, 28, 1);
+    ctx.stroke();
+
+    // Eyes
+    ctx.fillStyle = "#1c1f28";
+    ctx.beginPath();
+    ctx.ellipse(18, -10, 2.8, 3.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(26, -11, 2.8, 3.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Eye shine
     ctx.fillStyle = "#fff";
-    ctx.fillRect(18, 20, 3, 3);
-    ctx.fillRect(32, 20, 3, 3);
-    ctx.fillStyle = "#9a9aaa";
-    ctx.fillRect(-8, 28, 14, 10);
-    ctx.fillStyle = "#7a7a88";
-    ctx.fillRect(36, 38, 10, 8);
+    ctx.beginPath();
+    ctx.ellipse(19, -11, 1, 1.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(27, -12, 1, 1.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cheek marking
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(24, -2, 5, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.restore();
   }
 
@@ -969,8 +1368,19 @@ function iniciarMiniJuego(modulo, numero) {
       ctx.shadowColor = "#ffd700";
       ctx.shadowBlur = 16 * pulse;
       ctx.fillStyle = `rgba(255, 215, 0, ${pulse})`;
-      ctx.font = "bold 44px Press Start 2P";
-      ctx.fillText("★", sx, star.y);
+      // Centered on the star's collision box
+      const cx = sx + 20;
+      const cy = star.y + 2;
+      const outer = 18 + pulse * 2;
+      const inner = outer * 0.45;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const r = i % 2 === 0 ? outer : inner;
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.fill();
       ctx.restore();
     });
   }
@@ -1219,6 +1629,7 @@ window.responderPreguntaJuego = function (isInput) {
 
   const pregunta = currentPreguntaActiva;
   const esCorrecta = esRespuestaCorrecta(pregunta, respuestaUsuario);
+  registrarRespuestaNivel(pregunta, respuestaUsuario, esCorrecta);
 
   if (esCorrecta) {
     showFeedback("✓ CORRECT!", true);
@@ -1246,7 +1657,7 @@ window.onload = () => {
   crearNivelesFlotantes();
   crearNubes();
   console.log(
-    "%c⭐ STAR LANGUAJES cargado correctamente!",
+    "%c⭐ STAR LANGUAGES cargado correctamente!",
     "color:#e8c547; font-size:16px",
   );
 };

@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>⭐ STAR LANGUAJES ⭐</title>
+    <title>⭐ STAR LANGUAGES ⭐</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <!-- HEADER -->
     <header>
-        <div class="logo">⭐ STAR LANGUAJES ⭐</div>
+        <div class="logo">⭐ STAR LANGUAGES ⭐</div>
         <div class="header-buttons">
             <button onclick="mostrarLogin()">LOGIN</button>
             <button onclick="mostrarRegistro()">REGISTRARSE</button>
@@ -68,8 +68,42 @@
     </div>
 
     <footer>
-        <div class="ground"></div>
+        <div class="footer-bar">
+            <button type="button" class="about-btn" onclick="mostrarAbout()">ABOUT US</button>
+            <a class="instagram-link" href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zm10 2H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm-5 3.2A3.8 3.8 0 1 1 8.2 12 3.8 3.8 0 0 1 12 8.2zm0 2A1.8 1.8 0 1 0 13.8 12 1.8 1.8 0 0 0 12 10.2zM17.4 6.6a1 1 0 1 1-1 1 1 1 0 0 1 1-1z"/>
+                </svg>
+            </a>
+        </div>
     </footer>
+
+    <div id="aboutOverlay" class="overlay">
+        <div class="about-panel">
+            <h2>Why we created Star Languages</h2>
+            <p>Star Languages was born from the need to make learning English fun, accessible and motivating for children, teenagers and adults in Colombia. We believe that through video games people can learn faster and with more passion.</p>
+
+            <h3>Visión</h3>
+            <p>STAR GAMES INDUSTRY será en el año 2030 reconocida como la mejor en la creación de videojuegos educativos de idiomas en la industria de videojuegos, logrando ser competitivos y cubriendo a nivel nacional el mercado.</p>
+
+            <h3>Misión</h3>
+            <p>Desarrollar y ofrecer videojuegos educativos de alta calidad que transformen el aprendizaje en una experiencia divertida, efectiva y accesible.</p>
+
+            <h3>Objetivo General</h3>
+            <p>Desarrollar una plataforma digital interactiva llamada Star Languages para facilitar el aprendizaje del inglés mediante gamificación.</p>
+
+            <h3>Objetivos Específicos</h3>
+            <ul>
+                <li>Diseñar una interfaz intuitiva y atractiva</li>
+                <li>Implementar actividades, retos y recompensas</li>
+                <li>Desarrollar pruebas de nivel y seguimiento del progreso</li>
+                <li>Integrar diferentes niveles de dificultad</li>
+                <li>Evaluar el funcionamiento con usuarios reales</li>
+            </ul>
+
+            <button type="button" class="about-close" onclick="cerrarAbout()">CERRAR</button>
+        </div>
+    </div>
 
     <script src="script.js"></script>
 </body>
